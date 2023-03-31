@@ -3,6 +3,8 @@
 #include <iostream>
 #include <string>
 #include <cmath>
+#include <algorithm>
+#include <ranges>
 
 
 class formula
@@ -26,7 +28,7 @@ double sign(double x)
 }
 void report_approximation(size_t step, double x, double y)
 {
-	std::cout << std::format("x{} = {:<+22.16g} y{} = {:<+22.16g}\n", step, x, step, y);
+	std::cout << std::format("x{:02} = {:<+22.16g} y{:02} = {:<+22.16g}\n", step, x, step, y);
 }
 double get_second_difference(func f, double x)
 {
@@ -44,10 +46,19 @@ double finite_difference_second_derivative(func f, double x)
 {
 	return get_second_difference(f, x) / (2 * h);
 }
-
-
-double run_secant_method(func f, double x_precision, double x1, double x2, size_t max_steps)
+bool isinfnan(double x)
 {
+	return std::isnan(x) || std::isinf(x);
+}
+double estimate_root(func f, double x1, double x2)
+{
+	const double mid = (x1 + x2) / 2;
+	return std::ranges::min({ x1, x2, mid }, {}, [&](double x) { return std::abs(f(x)); });
+}
+
+double run_secant_method(func f, double x_precision, double x1, double x2, size_t max_steps = SIZE_MAX)
+{
+	std::cout << "\nSecant method:\n";
 	size_t step = 0;
 	while (true)
 	{
@@ -61,7 +72,7 @@ double run_secant_method(func f, double x_precision, double x1, double x2, size_
 		const double x3 = x1 - dx;
 		report_approximation(++step, x3, f(x3));
 
-		if (std::isnan(x3))
+		if (isinfnan(x3))
 			return NAN;
 
 		if (std::abs(dx) <= x_precision / 2)
@@ -71,8 +82,9 @@ double run_secant_method(func f, double x_precision, double x1, double x2, size_
 		x2 = x3;
 	}
 }
-double run_chord_method(func f, double x_precision, double x1, double x2, size_t max_steps)
+double run_chord_method(func f, double x_precision, double x1, double x2, size_t max_steps = SIZE_MAX)
 {
+	std::cout << "\nChord method:\n";
 	size_t step = 0;
 	if (!sign_matches(f(x1), get_second_difference(f, x1)))
 		std::swap(x1, x2);
@@ -89,7 +101,7 @@ double run_chord_method(func f, double x_precision, double x1, double x2, size_t
 		const double x3 = x2 - dx;
 		report_approximation(++step, x3, f(x3));
 
-		if (std::isnan(x3))
+		if (isinfnan(x3))
 			return NAN;
 
 		if (std::abs(dx) <= x_precision / 2)
@@ -98,8 +110,9 @@ double run_chord_method(func f, double x_precision, double x1, double x2, size_t
 		x2 = x3;
 	}
 }
-double run_dichotomy_method(func f, double x_precision, double x1, double x2, size_t max_steps)
+double run_dichotomy_method(func f, double x_precision, double x1, double x2, size_t max_steps = SIZE_MAX)
 {
+	std::cout << "\nDichotomy method:\n";
 	const double s1 = sign(f(x1));
 	const double s2 = sign(f(x2));
 	if (s1 == 0)
@@ -140,14 +153,15 @@ double run_dichotomy_method(func f, double x_precision, double x1, double x2, si
 			return NAN;
 	}
 }
-double run_newthon_method(func f, double x_precision, double x, size_t max_steps)
+double run_newthon_method(func f, double x_precision, double x, size_t max_steps = SIZE_MAX)
 {
+	std::cout << "\nNewthon method:\n";
 	size_t step = 0;
 	while (true)
 	{
 		if (step++ == max_steps)
 			return NAN;
-		if (std::isnan(x))
+		if (isinfnan(x))
 			return NAN;
 
 		const double dx = f(x) / finite_difference_derivative(f, x);
@@ -157,18 +171,19 @@ double run_newthon_method(func f, double x_precision, double x, size_t max_steps
 
 		if (std::abs(dx) <= x_precision / 2)
 			return x;
-		if (std::isnan(x))
+		if (isinfnan(x))
 			return NAN;
 	}
 }
-double run_halley_method(func f, double x_precision, double x, size_t max_steps)
+double run_halley_method(func f, double x_precision, double x, size_t max_steps = SIZE_MAX)
 {
+	std::cout << "\nHalley method:\n";
 	size_t step = 0;
 	while (true)
 	{
 		if (step++ == max_steps)
 			return NAN;
-		if (std::isnan(x))
+		if (isinfnan(x))
 			return NAN;
 
 		const double dfdx = finite_difference_derivative(f, x);
@@ -181,8 +196,50 @@ double run_halley_method(func f, double x_precision, double x, size_t max_steps)
 
 		if (std::abs(dx) <= x_precision / 2)
 			return x;
-		if (std::isnan(x))
+		if (isinfnan(x))
 			return NAN;
+	}
+}
+double run_simple_iterations_method(func f, double x_precision, double x1, double x2, size_t max_steps = SIZE_MAX)
+{
+	std::cout << "\nSimple iterations method:\n";
+	double lambda, x;
+	{
+		double dfdx1 = finite_difference_derivative(f, x1);
+		double dfdx2 = finite_difference_derivative(f, x2);
+
+		if (sign(dfdx1) != sign(dfdx2))
+		{
+			std::cout << "function rejected: derivative's sign alternates\n";
+			return NAN;
+		}
+
+		double adfdx1 = std::copysign(dfdx1, 1);
+		double adfdx2 = std::copysign(dfdx2, 1);
+
+		const double max_derivative = std::max(adfdx1, adfdx2);
+		if (max_derivative == 0)
+			return NAN;
+		lambda = std::copysign(1, dfdx1) / max_derivative;
+		
+		x = estimate_root(f, x1, x2);
+		report_approximation(0, x, f(x));
+	}
+
+	size_t step = 0;
+	while (true)
+	{
+		if (step++ == max_steps)
+			return NAN;
+		if (isinfnan(x))
+			return NAN;
+
+		const double y = f(x), dx = lambda * y;
+		x -= dx;
+		report_approximation(step, x, y);
+
+		if (std::abs(dx) < x_precision / 2)
+			return x;
 	}
 }
 
@@ -203,12 +260,14 @@ int main()
 			break;
 		std::cout << "error: " << str << "\nstarting at " << std::string_view(perr, std::min<size_t>(10, strlen(perr))) << "\n";
 	}
-	//run_secant_method(f, 1e-8, -2, 1, 100);
-	//run_chord_method(f, 1e-8, -2, 1, 100);
-	//run_dichotomy_method(f, 1e-8, -2, 1, 100);
-	//run_newthon_method(f, 0, 1, 100);
-	//run_halley_method(f, 0, 1, 100);
 
+	const double prec = 1e-8, l = -2, r = 3, x0 = (l + r) / 2;
+	run_secant_method(f, prec, l, r, 100);
+	run_chord_method(f, prec, l, r, 100);
+	run_dichotomy_method(f, prec, l, r, 100);
+	run_newthon_method(f, prec, x0, 100);
+	run_halley_method(f, prec, x0, 100);
+	run_simple_iterations_method(f, prec, l, r, 100);
 }
 
 
@@ -490,11 +549,11 @@ bool parse_expression(parse_context& cntxt, double& var)
 		return true;
 	cntxt = cntxt_copy;
 
-	if (try_parse_function(cntxt_copy, var))
+	if (try_parse_function(cntxt, var))
 		return true;
 	cntxt = cntxt_copy;
 
-	if (try_parse_unary_expr(cntxt_copy, var))
+	if (try_parse_unary_expr(cntxt, var))
 		return true;
 	//cntxt = cntxt_copy;
 
@@ -541,7 +600,7 @@ bool formula::validate(std::string& err_msg, const char*& err_pos) const noexcep
 	bool dry_parse_result = parse_expression(cntxt, unused);
 	
 	err_msg = std::move(cntxt.error_message);
-	if (err_msg.empty())
+	if (!dry_parse_result && err_msg.empty())
 		err_msg = "failed to classify token sequence";
 	err_pos = cntxt.p;
 	return dry_parse_result;
